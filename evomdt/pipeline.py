@@ -12,7 +12,7 @@ from .config import AppConfig
 from .consensus import deterministic_coordinator
 from .evaluation import aggregate_benchmark_results, evaluate_case
 from .evolution import apply_feedback, load_state, save_state
-from .io import load_case, load_dataset, write_json
+from .io import iter_dataset_tasks, load_case, write_json
 from .llm import ChatMessage, OpenAIChatProvider, StructuredLLM, parse_json_content
 from .models import AgentExecutionTrace, AgentOutput, CaseDossier, CaseRunResult, EvolutionState, RoleName, utc_timestamp
 from .prompts import build_system_prompt, build_user_prompt
@@ -44,8 +44,6 @@ class EvoMDTSystem:
         trace = await provider.generate_structured(
             messages,
             parser=lambda content: AgentOutput.model_validate(parse_json_content(content)),
-            temperature=self.config.llm_for(role_config.llm).temperature,
-            max_tokens=self.config.llm_for(role_config.llm).max_tokens,
         )
         parsed_output = AgentOutput.model_validate(trace.parsed)
         if parsed_output.role != role:
@@ -106,7 +104,7 @@ class EvoMDTSystem:
     async def run_benchmark(self, path: str | Path, *, output_path: str | Path | None = None) -> dict:
         results: list[CaseRunResult] = []
         evaluations = []
-        for case in load_dataset(path):
+        for case in iter_dataset_tasks(path):
             case_result = await self.run_case(case)
             results.append(case_result)
             if case_result.evaluation is not None:
@@ -126,7 +124,7 @@ class EvoMDTSystem:
         state = load_state(self.config)
         evolved_cases = 0
         if Path(path).suffix == ".jsonl":
-            cases = load_dataset(path)
+            cases = iter_dataset_tasks(path)
         else:
             cases = [load_case(path)]
         for case in cases:

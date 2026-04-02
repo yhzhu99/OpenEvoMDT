@@ -29,9 +29,6 @@ class StructuredLLM(Protocol):
         self,
         messages: list[ChatMessage],
         parser: Callable[[str], T],
-        *,
-        temperature: float,
-        max_tokens: int,
     ) -> LLMTrace:
         ...
 
@@ -73,15 +70,10 @@ class OpenAIChatProvider:
         self,
         messages: list[ChatMessage],
         parser: Callable[[str], T],
-        *,
-        temperature: float,
-        max_tokens: int,
     ) -> LLMTrace:
         completion = await self.client.chat.completions.create(
             model=self.config.model_name,
             messages=[message.model_dump() for message in messages],
-            temperature=temperature,
-            max_tokens=max_tokens,
             response_format={"type": "json_object"},
         )
         raw_content = completion.choices[0].message.content or ""

@@ -18,8 +18,6 @@ class LLMConfig(BaseModel):
     api_key: str | None = None
     base_url: str
     model_name: str
-    temperature: float = 0.2
-    max_tokens: int = 2048
 
     @model_validator(mode="after")
     def resolve_api_key(self) -> "LLMConfig":

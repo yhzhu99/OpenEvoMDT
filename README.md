@@ -35,6 +35,8 @@ Run the sample benchmark:
 uv run python main.py run-benchmark --input data/samples/benchmarks/sample_benchmark.jsonl
 ```
 
+`run-benchmark` reads the input as JSONL, with one task/case per line.
+
 Apply bounded prompt/weight evolution on a case or dataset:
 
 ```bash

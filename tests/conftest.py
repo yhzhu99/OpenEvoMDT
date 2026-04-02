@@ -11,7 +11,7 @@ from evomdt.llm import LLMTrace
 
 
 class FakeProvider:
-    async def generate_structured(self, messages, parser, *, temperature, max_tokens):
+    async def generate_structured(self, messages, parser):
         system_prompt = messages[0].content.lower()
         if "diagnostic agent" in system_prompt:
             payload = {
