@@ -1,0 +1,55 @@
+[llm."deepseek/deepseek-chat"]
+api_key_env = "DEEPSEEK_API_KEY"
+base_url = "https://api.deepseek.com"
+model_name = "deepseek-chat"
+temperature = 0.2
+max_tokens = 2048
+
+[llm."openai/gpt-5.4"]
+api_key_env = "ZENMUX_API_KEY"
+base_url = "https://zenmux.ai/api/v1"
+model_name = "openai/gpt-5.4"
+temperature = 0.2
+max_tokens = 2048
+
+[runtime]
+default_llm = "deepseek/deepseek-chat"
+artifacts_dir = "artifacts"
+evolution_state_path = "artifacts/evolution_state.json"
+
+[agents]
+parallel = true
+
+[agents.roles.diagnostic]
+llm = "deepseek/deepseek-chat"
+weight = 1.0
+
+[agents.roles.treatment]
+llm = "deepseek/deepseek-chat"
+weight = 1.0
+
+[agents.roles.safety]
+llm = "deepseek/deepseek-chat"
+weight = 1.2
+
+[agents.roles.monitoring]
+llm = "deepseek/deepseek-chat"
+weight = 0.9
+
+[agents.roles.coordinator]
+llm = "deepseek/deepseek-chat"
+weight = 1.1
+
+[evaluation]
+enable_llm_judge = false
+enable_bertscore = false
+judge_llm = "deepseek/deepseek-chat"
+
+[evolution]
+enabled = true
+max_weight_delta = 0.15
+weight_step = 0.05
+max_history = 200
+
+[logging]
+level = "INFO"
