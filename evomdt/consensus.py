@@ -12,7 +12,7 @@ from .models import (
     CoordinatorDecision,
     PlanItem,
     RiskAlert,
-    RoleName,
+    SpecialistRoleName,
 )
 
 
@@ -21,13 +21,12 @@ def normalize_action(action: str) -> str:
     return re.sub(r"\s+", " ", normalized)
 
 
-def case_role_modifiers(case: CaseDossier) -> dict[RoleName, float]:
-    modifiers: dict[RoleName, float] = {
+def case_role_modifiers(case: CaseDossier) -> dict[SpecialistRoleName, float]:
+    modifiers: dict[SpecialistRoleName, float] = {
         "diagnostic": 1.0,
         "treatment": 1.0,
         "safety": 1.0,
         "monitoring": 1.0,
-        "coordinator": 1.0,
     }
     if len(case.lesions) > 1 or len(case.biomarkers) > 2:
         modifiers["diagnostic"] += 0.15
@@ -68,7 +67,7 @@ def _safety_vetoes(safety_output: AgentOutput) -> dict[str, RiskAlert]:
 def deterministic_coordinator(
     case: CaseDossier,
     specialist_outputs: list[AgentOutput],
-    role_weights: dict[RoleName, float],
+    role_weights: dict[SpecialistRoleName, float],
 ) -> CoordinatorDecision:
     outputs_by_role = {output.role: output for output in specialist_outputs}
     modifiers = case_role_modifiers(case)
@@ -81,7 +80,7 @@ def deterministic_coordinator(
 
     vote_scores: dict[str, float] = defaultdict(float)
     vote_reasons: dict[str, list[str]] = defaultdict(list)
-    vote_roles: dict[str, list[RoleName]] = defaultdict(list)
+    vote_roles: dict[str, list[SpecialistRoleName]] = defaultdict(list)
     vote_actions: dict[str, ActionRecommendation] = {}
     objections: dict[str, list[RoleName]] = defaultdict(list)
     conflicts: list[ConflictRecord] = []

@@ -7,6 +7,8 @@ Python reproduction of the EvoMDT paper with:
 - deterministic consensus and evolution logic
 - sample benchmark and case-evaluation flows
 
+For fair framework comparison, the deterministic coordinator uses equal base weights for the four specialist agents (`diagnostic`, `treatment`, `safety`, `monitoring`). The coordinator itself does not carry a vote weight.
+
 The project uses `uv` with Python 3.12 and a simple `main.py` entrypoint instead of an installed CLI.
 
 ## Setup

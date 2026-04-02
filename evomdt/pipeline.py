@@ -14,12 +14,10 @@ from .evaluation import aggregate_benchmark_results, evaluate_case
 from .evolution import apply_feedback, load_state, save_state
 from .io import iter_dataset_tasks, load_case, write_json
 from .llm import ChatMessage, OpenAIChatProvider, StructuredLLM, parse_json_content
-from .models import AgentExecutionTrace, AgentOutput, CaseDossier, CaseRunResult, EvolutionState, RoleName, utc_timestamp
+from .models import AgentExecutionTrace, AgentOutput, CaseDossier, CaseRunResult, EvolutionState, RoleName, SPECIALIST_ROLES, utc_timestamp
 from .prompts import build_system_prompt, build_user_prompt
 
 LOGGER = logging.getLogger("evomdt.pipeline")
-
-SPECIALIST_ROLES: tuple[RoleName, ...] = ("diagnostic", "treatment", "safety", "monitoring")
 
 
 class EvoMDTSystem:

@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .models import RoleName
+from .models import RoleName, SPECIALIST_ROLES
 
 
 class LLMConfig(BaseModel):
@@ -38,7 +38,7 @@ class RoleConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     llm: str
-    weight: float = Field(gt=0.0)
+    weight: float | None = Field(default=None, gt=0.0)
 
 
 class AgentsConfig(BaseModel):
@@ -54,6 +54,11 @@ class AgentsConfig(BaseModel):
         if missing:
             missing_list = ", ".join(sorted(missing))
             raise ValueError(f"Missing agent role configuration: {missing_list}")
+        for role in SPECIALIST_ROLES:
+            if self.roles[role].weight is None:
+                raise ValueError(f"Agent role '{role}' must define a positive weight.")
+        if self.roles["coordinator"].weight is not None:
+            raise ValueError("Coordinator role must not define a weight; only specialist agents are weighted.")
         return self
 
 

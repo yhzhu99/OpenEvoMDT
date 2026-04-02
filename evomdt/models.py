@@ -6,9 +6,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 RoleName = Literal["diagnostic", "treatment", "safety", "monitoring", "coordinator"]
+SpecialistRoleName = Literal["diagnostic", "treatment", "safety", "monitoring"]
 TaskType = Literal["plan_eval", "generation", "mcq"]
 Severity = Literal["absolute", "major", "moderate", "minor", "info"]
 Stance = Literal["recommend", "consider", "avoid", "monitor"]
+SPECIALIST_ROLES: tuple[SpecialistRoleName, ...] = ("diagnostic", "treatment", "safety", "monitoring")
 
 
 class PatientContext(BaseModel):
@@ -100,7 +102,7 @@ class CoordinatorDecision(BaseModel):
     accepted_actions: list[str] = Field(default_factory=list)
     rejected_actions: list[str] = Field(default_factory=list)
     conflicts: list[ConflictRecord] = Field(default_factory=list)
-    role_weights: dict[RoleName, float]
+    role_weights: dict[SpecialistRoleName, float]
     decision_rationale: str
     audit_trace: list[str] = Field(default_factory=list)
     response_text: str
@@ -117,13 +119,13 @@ class EvaluationResult(BaseModel):
 class EvolutionEvent(BaseModel):
     timestamp: str
     feedback_tags: list[str]
-    weight_updates: dict[RoleName, float] = Field(default_factory=dict)
-    prompt_updates: dict[RoleName, list[str]] = Field(default_factory=dict)
+    weight_updates: dict[SpecialistRoleName, float] = Field(default_factory=dict)
+    prompt_updates: dict[SpecialistRoleName, list[str]] = Field(default_factory=dict)
 
 
 class EvolutionState(BaseModel):
-    role_weights: dict[RoleName, float]
-    prompt_refinements: dict[RoleName, list[str]]
+    role_weights: dict[SpecialistRoleName, float]
+    prompt_refinements: dict[SpecialistRoleName, list[str]]
     history: list[EvolutionEvent] = Field(default_factory=list)
 
 

@@ -57,7 +57,7 @@ def test_safety_veto_rejects_conflicting_action():
     decision = deterministic_coordinator(
         case,
         outputs,
-        {"diagnostic": 1.0, "treatment": 1.0, "safety": 1.2, "monitoring": 0.9, "coordinator": 1.1},
+        {"diagnostic": 1.0, "treatment": 1.0, "safety": 1.0, "monitoring": 1.0},
     )
     assert "Major hepatectomy" in decision.rejected_actions
     assert not decision.final_plan
