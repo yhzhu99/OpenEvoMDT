@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from .models import CaseDossier, RoleName
+from .models import CaseDossier, SpecialistRoleName
 
-BASE_PROMPTS: dict[RoleName, str] = {
+BASE_PROMPTS: dict[SpecialistRoleName, str] = {
     "diagnostic": (
         "You are the Diagnostic Agent in an oncology MDT workflow. "
         "Summarize the primary diagnosis, stage context, ranked differentials, and missing investigations. "
@@ -22,10 +22,6 @@ BASE_PROMPTS: dict[RoleName, str] = {
         "You are the Monitoring Agent in an oncology MDT workflow. "
         "Create acute, intermediate, and long-term monitoring steps with clear triggers and escalation points."
     ),
-    "coordinator": (
-        "You are the Coordinator Agent. "
-        "In this implementation the coordinator is deterministic, so this prompt is reserved for future extensions."
-    ),
 }
 
 JSON_SCHEMA_INSTRUCTIONS = (
@@ -36,20 +32,17 @@ JSON_SCHEMA_INSTRUCTIONS = (
     "supporting_facts must contain field_path, value, note."
 )
 
-REFINEMENT_SNIPPETS: dict[str, dict[RoleName, str]] = {
+REFINEMENT_SNIPPETS: dict[str, dict[SpecialistRoleName, str]] = {
     "completeness_gap": {
         "diagnostic": "Be explicit about unresolved investigations and stage-driving findings.",
         "treatment": "List a primary plan and at least one reasonable alternative when appropriate.",
         "monitoring": "Always include short-term and longitudinal follow-up steps.",
-        "coordinator": "Ensure every final answer covers diagnosis, treatment, safety, and monitoring.",
     },
     "safety_gap": {
         "safety": "Escalate organ dysfunction, contraindications, and high-risk therapy interactions clearly.",
-        "coordinator": "Reject unsafe actions when the Safety Agent identifies major or absolute risk.",
     },
     "monitoring_gap": {
         "monitoring": "Provide timing, trigger thresholds, and escalation pathways for follow-up.",
-        "coordinator": "Keep monitoring recommendations visible in the final answer.",
     },
     "evidence_gap": {
         "diagnostic": "Reference dossier facts explicitly instead of vague claims.",
@@ -57,15 +50,11 @@ REFINEMENT_SNIPPETS: dict[str, dict[RoleName, str]] = {
     },
     "treatment_gap": {
         "treatment": "State the plan in conclusion-first form and justify why it best fits the case.",
-        "coordinator": "Prefer the most coherent plan supported by diagnosis, safety, and feasibility.",
-    },
-    "efficiency_gap": {
-        "coordinator": "Keep the final answer concise, structured, and threshold-driven.",
     },
 }
 
 
-def active_refinements(role: RoleName, refinement_ids: list[str]) -> list[str]:
+def active_refinements(role: SpecialistRoleName, refinement_ids: list[str]) -> list[str]:
     snippets: list[str] = []
     for refinement_id in refinement_ids:
         role_snippets = REFINEMENT_SNIPPETS.get(refinement_id, {})
@@ -75,13 +64,13 @@ def active_refinements(role: RoleName, refinement_ids: list[str]) -> list[str]:
     return snippets
 
 
-def build_system_prompt(role: RoleName, refinement_ids: list[str]) -> str:
+def build_system_prompt(role: SpecialistRoleName, refinement_ids: list[str]) -> str:
     parts = [BASE_PROMPTS[role], JSON_SCHEMA_INSTRUCTIONS]
     parts.extend(active_refinements(role, refinement_ids))
     return "\n\n".join(parts)
 
 
-def build_user_prompt(case: CaseDossier, role: RoleName) -> str:
+def build_user_prompt(case: CaseDossier, role: SpecialistRoleName) -> str:
     return (
         f"Role: {role}\n"
         "Work only from this structured oncology case dossier.\n\n"
