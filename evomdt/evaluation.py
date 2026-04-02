@@ -113,6 +113,7 @@ def evaluate_case(
     decision: CoordinatorDecision,
     config: AppConfig,
 ) -> EvaluationResult:
+    outputs_by_role = {output.role: output for output in outputs}
     metrics: dict[str, float | None] = {}
     if case.task_type == "mcq" and case.reference_answer:
         metrics["accuracy"] = float(decision.final_answer.strip().lower() == case.reference_answer.strip().lower())
@@ -136,7 +137,7 @@ def evaluate_case(
         feedback_tags.append("evidence_gap")
     if dimension_scores["response_efficiency"] < 3.5:
         feedback_tags.append("efficiency_gap")
-    if not outputs[3].candidate_actions:
+    if not outputs_by_role["monitoring"].candidate_actions:
         feedback_tags.append("monitoring_gap")
     if dimension_scores["clinical_appropriateness"] < 3.5:
         feedback_tags.append("treatment_gap")
