@@ -68,6 +68,8 @@ class EvaluationConfig(BaseModel):
     enable_llm_judge: bool = False
     enable_bertscore: bool = False
     judge_llm: str | None = None
+    bertscore_model_type: str = "distilbert-base-uncased"
+    bertscore_lang: str = "en"
 
 
 class EvolutionConfig(BaseModel):

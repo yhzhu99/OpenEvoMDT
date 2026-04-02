@@ -8,6 +8,9 @@
     "performance_status": "ECOG 1",
     "summary": "HBV-related cirrhosis with a solitary segment 6 lesion and preserved liver function."
   },
+  "stage": "BCLC A",
+  "stage_system": "BCLC",
+  "pathology_summary": "Imaging-based HCC diagnosis in HBV-related cirrhosis.",
   "lesions": [
     {
       "site": "liver segment 6",
@@ -36,10 +39,46 @@
     "hypertension"
   ],
   "prior_treatments": [],
+  "line_of_therapy": "first_line",
+  "treatment_intent": "curative",
   "preferences": [
     "wants curative-intent treatment if feasible",
     "prefers outpatient follow-up when safe"
   ],
+  "missing_data": [
+    "pre-operative surgical fitness assessment"
+  ],
+  "monitoring_context": {
+    "acute_phase": "post-operative review within 2-6 weeks",
+    "longitudinal_phase": "cross-sectional imaging and AFP surveillance"
+  },
   "question": "Provide an MDT-style recommendation for initial management and surveillance.",
-  "reference_answer": "Recommend curative-intent liver resection if surgical fitness is acceptable, continue antiviral therapy for HBV, and arrange imaging plus AFP surveillance after treatment."
+  "reference_answer": "Recommend curative-intent liver resection if surgical fitness is acceptable, continue antiviral therapy for HBV, and arrange imaging plus AFP surveillance after treatment.",
+  "metadata": {
+    "reference_plan": [
+      {
+        "action": "Laparoscopic liver resection",
+        "priority": 1
+      },
+      {
+        "action": "Entecavir antiviral therapy",
+        "priority": 2
+      },
+      {
+        "action": "CT or MRI plus AFP every 3 months in year 1",
+        "priority": 2
+      }
+    ],
+    "guideline_tags": [
+      "liver resection",
+      "antiviral therapy"
+    ],
+    "required_constraints": [
+      "curative-intent",
+      "surveillance"
+    ],
+    "forbidden_actions": [
+      "Major hepatectomy"
+    ]
+  }
 }

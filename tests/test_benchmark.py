@@ -12,4 +12,4 @@ def test_run_benchmark_writes_summary(test_config):
     summary = asyncio.run(system.run_benchmark("data/samples/benchmarks/sample_benchmark.jsonl", output_path=output_path))
     assert summary["cases"] == 2
     assert output_path.exists()
-    assert "composite_dimension_mean" in summary["aggregate_metrics"]
+    assert "weighted_plan_concordance" in summary["aggregate_metrics"]

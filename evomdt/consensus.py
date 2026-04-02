@@ -129,6 +129,8 @@ def apply_safety_guardrail(
         f"Case: {case.case_id} ({case.cancer_type})",
         f"Question: {case.question}",
         "",
+        f"Coordinator Summary: {coordinator_output.summary}",
+        "",
         "Final MDT Recommendation:",
     ]
     if final_plan:
@@ -141,6 +143,8 @@ def apply_safety_guardrail(
         response_lines.append("Safety Signals:")
         for alert in safety_output.risks_or_alerts:
             response_lines.append(f"- {alert.severity.upper()}: {alert.concern} | Mitigation: {alert.mitigation}")
+    response_lines.append("")
+    response_lines.append(f"Decision Rationale: {coordinator_output.decision_rationale}")
     response_lines.append("")
     response_lines.append("Audit Trace:")
     response_lines.extend(f"- {entry}" for entry in audit_trace)

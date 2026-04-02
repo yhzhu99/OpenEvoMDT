@@ -39,6 +39,8 @@ llm = "deepseek/deepseek-chat"
 enable_llm_judge = false
 enable_bertscore = false
 judge_llm = "deepseek/deepseek-chat"
+bertscore_model_type = "distilbert-base-uncased"
+bertscore_lang = "en"
 
 [evolution]
 enabled = true
