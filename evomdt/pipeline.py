@@ -9,13 +9,23 @@ from time import perf_counter
 from .artifacts import inspect_run as read_run_summary
 from .artifacts import save_case_run
 from .config import AppConfig
-from .consensus import deterministic_coordinator
+from .consensus import apply_safety_guardrail, deterministic_coordinator
 from .evaluation import aggregate_benchmark_results, evaluate_case
-from .evolution import apply_feedback, load_state, save_state
+from .evolution import apply_feedback, initial_state, load_state, save_state
 from .io import iter_dataset_tasks, load_case, write_json
 from .llm import ChatMessage, OpenAIChatProvider, StructuredLLM, parse_json_content
-from .models import AgentExecutionTrace, AgentOutput, CaseDossier, CaseRunResult, EvolutionState, RoleName, SPECIALIST_ROLES, utc_timestamp
-from .prompts import build_system_prompt, build_user_prompt
+from .models import (
+    AgentExecutionTrace,
+    AgentOutput,
+    CaseDossier,
+    CaseRunResult,
+    CoordinatorOutput,
+    EvolutionState,
+    SPECIALIST_ROLES,
+    SpecialistRoleName,
+    utc_timestamp,
+)
+from .prompts import build_coordinator_system_prompt, build_coordinator_user_prompt, build_system_prompt, build_user_prompt
 
 LOGGER = logging.getLogger("evomdt.pipeline")
 
@@ -32,7 +42,12 @@ class EvoMDTSystem:
     def _default_provider_factory(self, model_key: str) -> StructuredLLM:
         return OpenAIChatProvider(self.config.llm_for(model_key))
 
-    async def _run_specialist(self, case: CaseDossier, role: RoleName, refinement_ids: list[str]) -> AgentExecutionTrace:
+    async def _run_specialist(
+        self,
+        case: CaseDossier,
+        role: SpecialistRoleName,
+        refinement_ids: list[str],
+    ) -> AgentExecutionTrace:
         role_config = self.config.agents.roles[role]
         provider = self.provider_factory(role_config.llm)
         messages = [
@@ -54,6 +69,26 @@ class EvoMDTSystem:
             parsed_output=parsed_output,
         )
 
+    async def _run_coordinator(self, case: CaseDossier, outputs: list[AgentOutput]) -> AgentExecutionTrace:
+        role_config = self.config.agents.roles["coordinator"]
+        provider = self.provider_factory(role_config.llm)
+        messages = [
+            ChatMessage(role="system", content=build_coordinator_system_prompt()),
+            ChatMessage(role="user", content=build_coordinator_user_prompt(case, outputs)),
+        ]
+        trace = await provider.generate_structured(
+            messages,
+            parser=lambda content: CoordinatorOutput.model_validate(parse_json_content(content)),
+        )
+        parsed_output = CoordinatorOutput.model_validate(trace.parsed)
+        return AgentExecutionTrace(
+            role="coordinator",
+            model_name=trace.model_name,
+            raw_content=trace.raw_content,
+            usage=trace.usage,
+            parsed_output=parsed_output,
+        )
+
     async def run_case(
         self,
         case: CaseDossier,
@@ -61,7 +96,7 @@ class EvoMDTSystem:
         persist: bool = True,
         state: EvolutionState | None = None,
     ) -> CaseRunResult:
-        state = state or load_state(self.config)
+        state = state or initial_state(self.config)
         started_at = perf_counter()
         refinement_ids_by_role = state.prompt_refinements
 
@@ -78,7 +113,19 @@ class EvoMDTSystem:
                 traces.append(await self._run_specialist(case, role, refinement_ids_by_role.get(role, [])))
 
         outputs = [trace.parsed_output for trace in traces]
-        coordinator_decision = deterministic_coordinator(case, outputs, state.role_weights)
+        coordinator_trace: AgentExecutionTrace | None = None
+        try:
+            coordinator_trace = await self._run_coordinator(case, outputs)
+            traces.append(coordinator_trace)
+            coordinator_decision = apply_safety_guardrail(
+                case,
+                outputs,
+                CoordinatorOutput.model_validate(coordinator_trace.parsed_output),
+                state.role_weights,
+            )
+        except Exception:
+            LOGGER.exception("Coordinator agent failed; falling back to deterministic synthesis.")
+            coordinator_decision = deterministic_coordinator(case, outputs, state.role_weights)
         evaluation = evaluate_case(case, outputs, coordinator_decision, self.config)
         timestamp = utc_timestamp().replace(":", "").replace("-", "").replace("+00:00", "Z")
         run_id = f"{timestamp}_{case.case_id.replace(' ', '-').lower()}"

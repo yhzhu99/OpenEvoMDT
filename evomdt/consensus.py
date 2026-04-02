@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 import re
-from collections import defaultdict
-from statistics import mean
 
 from .models import (
-    ActionRecommendation,
     AgentOutput,
     CaseDossier,
     ConflictRecord,
     CoordinatorDecision,
+    CoordinatorOutput,
     PlanItem,
     RiskAlert,
+    RoleName,
     SpecialistRoleName,
 )
 
@@ -64,108 +63,67 @@ def _safety_vetoes(safety_output: AgentOutput) -> dict[str, RiskAlert]:
     return vetoes
 
 
-def deterministic_coordinator(
+def _role_weights_with_modifiers(
+    case: CaseDossier,
+    role_weights: dict[SpecialistRoleName, float],
+) -> dict[SpecialistRoleName, float]:
+    modifiers = case_role_modifiers(case)
+    return {role: round(role_weights[role] * modifiers[role], 4) for role in role_weights}
+
+
+def apply_safety_guardrail(
     case: CaseDossier,
     specialist_outputs: list[AgentOutput],
+    coordinator_output: CoordinatorOutput,
     role_weights: dict[SpecialistRoleName, float],
 ) -> CoordinatorDecision:
     outputs_by_role = {output.role: output for output in specialist_outputs}
-    modifiers = case_role_modifiers(case)
-    effective_weights = {
-        role: round(role_weights[role] * modifiers[role], 4)
-        for role in role_weights
-    }
     safety_output = outputs_by_role["safety"]
     vetoes = _safety_vetoes(safety_output)
 
-    vote_scores: dict[str, float] = defaultdict(float)
-    vote_reasons: dict[str, list[str]] = defaultdict(list)
-    vote_roles: dict[str, list[SpecialistRoleName]] = defaultdict(list)
-    vote_actions: dict[str, ActionRecommendation] = {}
-    objections: dict[str, list[RoleName]] = defaultdict(list)
-    conflicts: list[ConflictRecord] = []
-
-    for output in specialist_outputs:
-        role_weight = effective_weights[output.role] * output.confidence
-        for action in output.candidate_actions:
-            key = normalize_action(action.action)
-            vote_actions.setdefault(key, action)
-            vote_reasons[key].append(f"{output.role}: {action.rationale}")
-            if action.stance in {"recommend", "consider", "monitor"}:
-                vote_scores[key] += role_weight * (1.0 if action.stance == "recommend" else 0.7)
-                vote_roles[key].append(output.role)
-            elif action.stance == "avoid":
-                vote_scores[key] -= role_weight
-                objections[key].append(output.role)
-
     final_plan: list[PlanItem] = []
     accepted_actions: list[str] = []
-    rejected_actions: list[str] = []
-    audit_trace: list[str] = []
+    rejected_actions = list(dict.fromkeys(coordinator_output.rejected_actions))
+    conflicts = list(coordinator_output.conflicts)
+    audit_trace = list(coordinator_output.audit_trace)
 
-    for key, score in sorted(vote_scores.items(), key=lambda item: item[1], reverse=True):
-        action = vote_actions[key]
+    for item in coordinator_output.final_plan:
+        key = normalize_action(item.action)
         veto = vetoes.get(key)
-        objectors = objections.get(key, [])
-
-        if veto is not None:
-            rejected_actions.append(action.action)
-            conflicts.append(
-                ConflictRecord(
-                    action=action.action,
-                    recommenders=vote_roles[key],
-                    objectors=["safety"],
-                    severity=veto.severity,
-                    outcome="rejected",
-                    rationale=f"Safety-first veto: {veto.concern}",
-                )
-            )
-            audit_trace.append(f"Rejected '{action.action}' because Safety flagged {veto.severity} risk.")
+        if veto is None:
+            final_plan.append(item)
+            accepted_actions.append(item.action)
             continue
 
-        if score <= 0:
-            rejected_actions.append(action.action)
-            if objectors:
-                conflicts.append(
-                    ConflictRecord(
-                        action=action.action,
-                        recommenders=vote_roles[key],
-                        objectors=objectors,
-                        severity="moderate",
-                        outcome="rejected",
-                        rationale="Negative weighted consensus after objections.",
-                    )
-                )
-            audit_trace.append(f"Rejected '{action.action}' because the weighted consensus score was {score:.2f}.")
-            continue
-
-        if objectors:
-            conflicts.append(
-                ConflictRecord(
-                    action=action.action,
-                    recommenders=vote_roles[key],
-                    objectors=objectors,
-                    severity="major" if "safety" in objectors else "moderate",
-                    outcome="accepted",
-                    rationale="Accepted after positive weighted consensus despite objections.",
-                )
-            )
-        accepted_actions.append(action.action)
-        final_plan.append(
-            PlanItem(
-                action=action.action,
-                owner_role=vote_roles[key][0] if vote_roles[key] else "coordinator",
-                rationale=" | ".join(vote_reasons[key]),
-                priority=action.priority,
-                score=round(score, 4),
+        rejected_actions.append(item.action)
+        conflicts.append(
+            ConflictRecord(
+                action=item.action,
+                recommenders=[item.owner_role],
+                objectors=["safety"],
+                severity=veto.severity,
+                conflict_type="risk",
+                outcome="rejected",
+                rationale=f"Safety guardrail vetoed coordinator plan item: {veto.concern}",
             )
         )
-        audit_trace.append(f"Accepted '{action.action}' with weighted consensus score {score:.2f}.")
+        audit_trace.append(f"Guardrail removed '{item.action}' because Safety flagged {veto.severity} risk.")
 
-    final_plan.sort(key=lambda item: (-item.score, item.priority))
-    final_answer = accepted_actions[0] if accepted_actions else safety_output.summary
-    confidence_values = [output.confidence for output in specialist_outputs]
-    final_confidence = round(mean(confidence_values), 4) if confidence_values else 0.0
+    if not accepted_actions:
+        for action in coordinator_output.accepted_actions:
+            if normalize_action(action) not in vetoes:
+                accepted_actions.append(action)
+            else:
+                rejected_actions.append(action)
+                audit_trace.append(f"Guardrail removed accepted action '{action}' because Safety vetoed it.")
+
+    final_plan.sort(key=lambda item: (-item.score, item.priority, item.action))
+    accepted_actions = list(dict.fromkeys(accepted_actions))
+    rejected_actions = list(dict.fromkeys(rejected_actions))
+    effective_weights = _role_weights_with_modifiers(case, role_weights)
+
+    top_action = accepted_actions[0] if accepted_actions else safety_output.summary
+    final_answer = coordinator_output.summary if final_plan else top_action
 
     response_lines = [
         f"Case: {case.case_id} ({case.cancer_type})",
@@ -187,10 +145,6 @@ def deterministic_coordinator(
     response_lines.append("Audit Trace:")
     response_lines.extend(f"- {entry}" for entry in audit_trace)
 
-    decision_rationale = (
-        "Deterministic coordinator combined specialist confidence with role weights and case modifiers, "
-        "while enforcing safety-first vetoes before ranking the surviving actions."
-    )
     return CoordinatorDecision(
         final_plan=final_plan,
         final_answer=final_answer,
@@ -198,8 +152,63 @@ def deterministic_coordinator(
         rejected_actions=rejected_actions,
         conflicts=conflicts,
         role_weights=effective_weights,
-        decision_rationale=decision_rationale,
+        decision_rationale=coordinator_output.decision_rationale,
         audit_trace=audit_trace,
         response_text="\n".join(response_lines),
-        final_confidence=final_confidence,
+        final_confidence=coordinator_output.final_confidence,
     )
+
+
+def deterministic_coordinator(
+    case: CaseDossier,
+    specialist_outputs: list[AgentOutput],
+    role_weights: dict[SpecialistRoleName, float],
+) -> CoordinatorDecision:
+    outputs_by_role = {output.role: output for output in specialist_outputs}
+    safety_output = outputs_by_role["safety"]
+    effective_weights = _role_weights_with_modifiers(case, role_weights)
+
+    plan_items: list[PlanItem] = []
+    conflicts: list[ConflictRecord] = []
+    audit_trace: list[str] = []
+
+    for output in specialist_outputs:
+        for action in output.candidate_actions:
+            if action.stance == "avoid":
+                conflicts.append(
+                    ConflictRecord(
+                        action=action.action,
+                        recommenders=[],
+                        objectors=[output.role],
+                        severity="major",
+                        conflict_type="risk",
+                        outcome="flagged",
+                        rationale=action.rationale,
+                    )
+                )
+                continue
+            score = round(effective_weights[output.role] * output.confidence, 4)
+            plan_items.append(
+                PlanItem(
+                    action=action.action,
+                    owner_role=output.role,
+                    rationale=action.rationale,
+                    priority=action.priority,
+                    score=score,
+                    citations=action.citations,
+                )
+            )
+            audit_trace.append(f"Fallback coordinator kept '{action.action}' from {output.role}.")
+
+    fallback = CoordinatorOutput(
+        summary="Fallback coordinator summary generated from specialist actions.",
+        final_plan=plan_items,
+        accepted_actions=[item.action for item in plan_items],
+        rejected_actions=[],
+        conflicts=conflicts,
+        decision_rationale="Fallback deterministic coordinator used because LLM coordinator output was unavailable.",
+        audit_trace=audit_trace,
+        final_confidence=max((output.confidence for output in specialist_outputs), default=0.0),
+        supporting_facts=[],
+    )
+    return apply_safety_guardrail(case, specialist_outputs, fallback, role_weights)
