@@ -1,1 +1,6 @@
 paper/
+__pycache__/
+.pytest_cache/
+.venv/
+artifacts/
+uv.lock
