@@ -2,12 +2,12 @@
 
 Python reproduction of the EvoMDT paper with:
 
-- a fixed five-agent oncology workflow
+- a fixed five-agent oncology workflow with an explicit coordinator agent
 - TOML-based LLM configuration
-- deterministic consensus and evolution logic
+- frozen-by-default evaluation runs and explicit evolution state
 - sample benchmark and case-evaluation flows
 
-For fair framework comparison, the deterministic coordinator uses equal base weights for the four specialist agents (`diagnostic`, `treatment`, `safety`, `monitoring`). The coordinator itself does not carry a vote weight.
+For fair framework comparison, the default runtime is no-RAG and does not implicitly load adaptive state from prior runs. The coordinator is a fifth LLM agent, while a deterministic safety guardrail still blocks actions explicitly vetoed by the Safety agent.
 
 The project uses `uv` with Python 3.12 and a simple `main.py` entrypoint instead of an installed CLI.
 
@@ -55,6 +55,6 @@ uv run python main.py inspect-run --run-id <run-id>
 
 - `main.py`: simple entrypoint for running cases, benchmarks, evolution, and run inspection
 - `config.toml`: HealthFlow-style LLM and runtime configuration
-- `evomdt/`: framework code for config, LLM calls, prompts, coordination, evaluation, and evolution
+- `evomdt/`: framework code for config, LLM calls, prompts, five-agent coordination, evaluation, and evolution
 - `data/samples/`: example oncology inputs for local smoke tests
 - `tests/`: fake-provider unit tests that do not call external APIs
