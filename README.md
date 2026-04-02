@@ -13,13 +13,14 @@ This repository is designed for **fair comparison across agent frameworks**. It 
 - Publisher page: <https://doi.org/10.1038/s41746-025-02304-8>
 - PubMed Central: <https://pmc.ncbi.nlm.nih.gov/articles/PMC12873204/>
 
-**Original project referenced by the paper**
+**Paper-listed code repository**
 
-- Official code link listed in the paper: <https://github.com/KesselZ/EvoMDT>
+- Repository link listed in the paper: <https://github.com/KesselZ/EvoMDT>
+- Note: repository availability and contents can change over time. As checked on **2026-04-03**, the public repository exists, but its visible contents are relatively minimal and should not be treated as a complete reference implementation for reproduction or benchmarking.
 
 ## What This Repository Is
 
-`OpenEvoMDT` is **not** the original authors' repository. It is a clean-room, Python-first reproduction focused on:
+`OpenEvoMDT` is **not** the original authors' repository, and it should not be interpreted as a mirror of the paper-listed GitHub repo. It is a clean-room, Python-first reproduction focused on:
 
 - preserving the **five-agent EvoMDT structure**
 - making the system easier to inspect, test, and modify
@@ -207,4 +208,4 @@ This repository is for **research, reproduction, and framework evaluation** only
 
 ## Acknowledgement
 
-This project stands on the original EvoMDT paper and the authors' public release. The goal here is not to replace that work, but to provide a transparent reproduction that is easier to benchmark, inspect, and compare across agent frameworks.
+This project stands on the original EvoMDT paper and the public repository link cited by that paper. The goal here is not to replace the authors' work, but to provide a transparent reproduction that is easier to benchmark, inspect, and compare across agent frameworks.
