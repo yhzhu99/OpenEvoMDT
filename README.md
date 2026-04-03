@@ -2,6 +2,8 @@
 
 An independent, framework-comparable reproduction of **EvoMDT**, the multi-agent oncology decision-making framework proposed in the paper *EvoMDT: a self-evolving multi-agent system for structured clinical decision-making in multi-cancer*.
 
+The repository still preserves the original five-agent oncology workflow, but now also supports **domain-switched biomedical generation tasks** with explicit output contracts such as constrained `A/B` answers.
+
 This repository is designed for **fair comparison across agent frameworks**. It keeps the core multi-agent structure of EvoMDT while intentionally disabling retrieval by default, so benchmark results are not inflated by a private RAG stack or hidden document pipeline. Evidence and provenance are still exposed through explicit interfaces, which makes it possible to re-enable grounded variants later without changing the public contract.
 
 ## Paper Reference
@@ -41,6 +43,7 @@ This reproduction follows a specific philosophy:
 ### Included
 
 - five-agent workflow with an explicit `Coordinator` agent
+- domain-switched prompt profiles for oncology MDT and general biomedical QA
 - no-RAG prompts and structured message passing
 - safety-first guardrail that blocks coordinator acceptance of explicitly vetoed actions
 - benchmark-oriented evaluation:
@@ -71,6 +74,8 @@ The current pipeline is:
 4. The run is evaluated and persisted as structured artifacts.
 
 This gives you a setup that is still agentic, but much easier to compare fairly than a full hidden-RAG clinical stack.
+
+For non-oncology experiments, the same five-agent topology can be reused with a different prompt profile and a constrained output contract in the case metadata.
 
 ## Why This Is Useful for Agent Framework Comparison
 
@@ -121,6 +126,20 @@ uv run python main.py run-benchmark \
   --input data/samples/benchmarks/sample_benchmark.jsonl
 ```
 
+### 4b. Run the biomedical A/B demo case
+
+```bash
+uv run python main.py run-case \
+  --input data/samples/cases/sample_biomedical_hyperpyrexia_case.json
+```
+
+### 4c. Run the biomedical benchmark and evolution loop
+
+```bash
+uv run python main.py evolve \
+  --input data/samples/benchmarks/sample_biomedical_benchmark.jsonl
+```
+
 ### 5. Run bounded evolution on a dataset
 
 ```bash
@@ -153,6 +172,7 @@ Key defaults:
 - [`config.toml`](./config.toml): LLM, runtime, agent, evaluation, and evolution configuration
 - [`evomdt/`](./evomdt): core framework code
 - [`data/samples/`](./data/samples): sample oncology cases and benchmark inputs
+- biomedical demo inputs are included under `data/samples/cases/sample_biomedical_hyperpyrexia_case.json` and `data/samples/benchmarks/sample_biomedical_benchmark.jsonl`
 - [`tests/`](./tests): fake-provider tests that run without external APIs
 - [`paper/EvoMDT.md`](./paper/EvoMDT.md): local paper copy used during reproduction and alignment
 
