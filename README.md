@@ -140,6 +140,23 @@ uv run python main.py evolve \
   --input data/samples/benchmarks/sample_biomedical_benchmark.jsonl
 ```
 
+### 4d. Run a minimal benchmark file directly
+
+`OpenEvoMDT` can now ingest lightweight biomedical benchmark rows without converting them into a rich case dossier first. A JSONL row like this is valid:
+
+```json
+{"qid": 1, "task": "Which option is correct? (A) foo (B) bar (C) baz", "answer": "B"}
+```
+
+Supported aliases include:
+
+- case id: `case_id`, `qid`, `id`, `question_id`
+- question text: `question`, `task`, `prompt`, `query`, `input`
+- reference answer: `reference_answer`, `answer`, `gold_answer`, `label`, `target`
+- options: `options`, `choices`, `answer_choices`, `candidates`
+
+If options are not provided explicitly, the loader will infer option labels such as `A/B/C/D` from the task text when possible and automatically apply a constrained output contract.
+
 ### 5. Run bounded evolution on a dataset
 
 ```bash
