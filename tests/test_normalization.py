@@ -55,6 +55,7 @@ def test_normalize_coordinator_output_payload_fills_missing_lists():
             "summary": "Choose A under the synthetic benchmark rule.",
             "final_answer": "A",
             "final_plan": [{"action": "Escalate urgently", "priority": "High", "confidence": "80%"}],
+            "accepted_actions": [{"action": "Escalate urgently"}],
             "audit_trace": "Integrated specialist outputs.",
             "final_confidence": "High",
         },

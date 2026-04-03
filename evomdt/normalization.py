@@ -27,7 +27,15 @@ def _coerce_string_list(value: Any) -> list[str]:
     if value is None:
         return []
     if isinstance(value, list):
-        return [_stringify(item) for item in value if _stringify(item)]
+        items: list[str] = []
+        for item in value:
+            if isinstance(item, dict):
+                rendered = _stringify(item.get("action") or item.get("name") or item.get("title") or item.get("value"))
+            else:
+                rendered = _stringify(item)
+            if rendered:
+                items.append(rendered)
+        return items
     if isinstance(value, dict):
         items: list[str] = []
         for key, item_value in value.items():
