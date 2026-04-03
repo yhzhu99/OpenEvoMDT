@@ -1,41 +1,86 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 
-from .models import AgentOutput, CaseDossier, SpecialistRoleName
+from .contracts import output_contract_instructions
+from .models import AgentOutput, CaseDossier, RoleName, SpecialistRoleName
 
-BASE_PROMPTS: dict[SpecialistRoleName, str] = {
-    "diagnostic": (
-        "You are the Diagnostic Agent in an oncology MDT workflow. "
-        "Produce a lesion-level diagnostic summary with the primary diagnosis, stage context, ranked differentials, "
-        "key missing investigations, and calibrated confidence. "
-        "Use only the dossier. Do not claim retrieval, guidelines, or literature that you did not receive."
+
+@dataclass(frozen=True)
+class PromptProfile:
+    specialist_prompts: dict[SpecialistRoleName, str]
+    coordinator_prompt: str
+    dossier_label: str
+
+
+PROMPT_PROFILES: dict[str, PromptProfile] = {
+    "oncology": PromptProfile(
+        specialist_prompts={
+            "diagnostic": (
+                "You are the Diagnostic Agent in an oncology MDT workflow. "
+                "Produce a lesion-level diagnostic summary with the primary diagnosis, stage context, ranked differentials, "
+                "key missing investigations, and calibrated confidence. "
+                "Use only the dossier. Do not claim retrieval, guidelines, or literature that you did not receive."
+            ),
+            "treatment": (
+                "You are the Treatment Agent in an oncology MDT workflow. "
+                "Produce an individualized treatment plan with sequencing logic, alternatives, line-of-therapy awareness, "
+                "and explicit fit to stage, biomarkers, organ reserve, and patient preferences. "
+                "Use only the dossier. Do not invent external citations."
+            ),
+            "safety": (
+                "You are the Safety Agent in an oncology MDT workflow. "
+                "Identify contraindications, organ-function concerns, treatment interactions, and major safety gates. "
+                "Prioritize patient protection. Any action that is clearly unsafe should be marked as avoid with a major or absolute risk alert."
+            ),
+            "monitoring": (
+                "You are the Monitoring Agent in an oncology MDT workflow. "
+                "Create acute, intermediate, and long-term monitoring steps with clear timing, trigger thresholds, and escalation points."
+            ),
+        },
+        coordinator_prompt=(
+            "You are the Coordinator Agent in an oncology MDT workflow. "
+            "Synthesize the Diagnostic, Treatment, Safety, and Monitoring outputs into a single MDT-style recommendation. "
+            "Resolve semantic, risk, and implementation conflicts explicitly. Respect the Safety agent's major concerns, "
+            "favor implementable plans, and keep uncertainty calibrated. "
+            "Use only the dossier and specialist outputs provided. Do not invent retrieval results or citations. "
+            "If provenance is not available, leave citation lists empty."
+        ),
+        dossier_label="structured oncology case dossier",
     ),
-    "treatment": (
-        "You are the Treatment Agent in an oncology MDT workflow. "
-        "Produce an individualized treatment plan with sequencing logic, alternatives, line-of-therapy awareness, "
-        "and explicit fit to stage, biomarkers, organ reserve, and patient preferences. "
-        "Use only the dossier. Do not invent external citations."
-    ),
-    "safety": (
-        "You are the Safety Agent in an oncology MDT workflow. "
-        "Identify contraindications, organ-function concerns, treatment interactions, and major safety gates. "
-        "Prioritize patient protection. Any action that is clearly unsafe should be marked as avoid with a major or absolute risk alert."
-    ),
-    "monitoring": (
-        "You are the Monitoring Agent in an oncology MDT workflow. "
-        "Create acute, intermediate, and long-term monitoring steps with clear timing, trigger thresholds, and escalation points."
+    "biomedical_qa": PromptProfile(
+        specialist_prompts={
+            "diagnostic": (
+                "You are the Diagnostic Agent in a biomedical QA workflow. "
+                "Extract the key stated facts, identify missing context, and separate observed evidence from assumptions. "
+                "Your goal is to ground the later answer in the dossier rather than to make unsupported clinical claims."
+            ),
+            "treatment": (
+                "You are the Treatment Agent in a biomedical QA workflow. "
+                "Produce the strongest answer candidate allowed by the dossier, explain why it fits the facts, and note competing interpretations. "
+                "Use only the dossier and do not invent outside evidence."
+            ),
+            "safety": (
+                "You are the Safety Agent in a biomedical QA workflow. "
+                "Challenge overconfident reasoning, identify dangerous assumptions, and flag when the dossier is too weak for a strong conclusion. "
+                "Any conclusion that could cause harmful overstatement should be marked as avoid with a major or absolute risk alert."
+            ),
+            "monitoring": (
+                "You are the Monitoring Agent in a biomedical QA workflow. "
+                "Identify what follow-up information, observation windows, and escalation triggers would matter for a safer answer. "
+                "If urgent action or observation is warranted, express it as candidate actions."
+            ),
+        },
+        coordinator_prompt=(
+            "You are the Coordinator Agent in a biomedical QA workflow. "
+            "Synthesize the Diagnostic, Treatment, Safety, and Monitoring outputs into one constrained final answer. "
+            "Resolve conflicts explicitly, preserve uncertainty, and follow any output contract exactly. "
+            "Use only the dossier and specialist outputs provided. Do not invent retrieval results or citations."
+        ),
+        dossier_label="structured biomedical task dossier",
     ),
 }
-
-COORDINATOR_PROMPT = (
-    "You are the Coordinator Agent in an oncology MDT workflow. "
-    "Synthesize the Diagnostic, Treatment, Safety, and Monitoring outputs into a single MDT-style recommendation. "
-    "Resolve semantic, risk, and implementation conflicts explicitly. Respect the Safety agent's major concerns, "
-    "favor implementable plans, and keep uncertainty calibrated. "
-    "Use only the dossier and specialist outputs provided. Do not invent retrieval results or citations. "
-    "If provenance is not available, leave citation lists empty."
-)
 
 SPECIALIST_JSON_SCHEMA_INSTRUCTIONS = (
     "Return valid JSON only with the fields: "
@@ -49,7 +94,8 @@ SPECIALIST_JSON_SCHEMA_INSTRUCTIONS = (
 
 COORDINATOR_JSON_SCHEMA_INSTRUCTIONS = (
     "Return valid JSON only with the fields: "
-    "role, summary, final_plan, accepted_actions, rejected_actions, conflicts, decision_rationale, audit_trace, final_confidence, supporting_facts. "
+    "role, summary, final_answer, final_plan, accepted_actions, rejected_actions, conflicts, decision_rationale, audit_trace, final_confidence, supporting_facts. "
+    "final_answer must contain the exact final answer string. "
     "final_plan items must contain action, owner_role, rationale, priority, score, citations. "
     "conflicts must contain action, recommenders, objectors, severity, conflict_type, outcome, rationale. "
     "supporting_facts must contain field_path, value, note, citations. "
@@ -62,7 +108,7 @@ NO_RAG_INSTRUCTIONS = (
     "You may reason from the structured dossier and prior agent outputs only."
 )
 
-REFINEMENT_SNIPPETS: dict[str, dict[SpecialistRoleName, str]] = {
+REFINEMENT_SNIPPETS: dict[str, dict[RoleName, str]] = {
     "completeness_gap": {
         "diagnostic": "Be explicit about unresolved investigations, stage-driving findings, and missing data that block certainty.",
         "treatment": "List a primary plan and at least one reasonable alternative when appropriate.",
@@ -81,10 +127,25 @@ REFINEMENT_SNIPPETS: dict[str, dict[SpecialistRoleName, str]] = {
     "treatment_gap": {
         "treatment": "State the plan in conclusion-first form and justify why it best fits the case.",
     },
+    "accuracy_gap": {
+        "diagnostic": "Distinguish direct dossier facts from inferred claims so the final answer can be defended cleanly.",
+        "treatment": "Make the answer candidate explicit, concise, and tightly tied to the stated facts.",
+    },
+    "traceability_gap": {
+        "diagnostic": "Enumerate the dossier fields that most directly support or weaken the answer.",
+        "treatment": "Anchor the answer rationale to the strongest supporting facts and surface key missing data.",
+    },
+    "format_gap": {
+        "coordinator": "Follow the output contract exactly and set final_answer to one allowed value with no paraphrase.",
+    },
 }
 
 
-def active_refinements(role: SpecialistRoleName, refinement_ids: list[str]) -> list[str]:
+def prompt_profile_for(case: CaseDossier) -> PromptProfile:
+    return PROMPT_PROFILES.get(case.domain, PROMPT_PROFILES["oncology"])
+
+
+def active_refinements(role: RoleName, refinement_ids: list[str]) -> list[str]:
     snippets: list[str] = []
     for refinement_id in refinement_ids:
         role_snippets = REFINEMENT_SNIPPETS.get(refinement_id, {})
@@ -94,22 +155,38 @@ def active_refinements(role: SpecialistRoleName, refinement_ids: list[str]) -> l
     return snippets
 
 
-def build_system_prompt(role: SpecialistRoleName, refinement_ids: list[str]) -> str:
-    parts = [BASE_PROMPTS[role], SPECIALIST_JSON_SCHEMA_INSTRUCTIONS, NO_RAG_INSTRUCTIONS]
+def _contract_parts(case: CaseDossier) -> list[str]:
+    contract_text = output_contract_instructions(case)
+    return [contract_text] if contract_text else []
+
+
+def build_system_prompt(case: CaseDossier, role: SpecialistRoleName, refinement_ids: list[str]) -> str:
+    profile = prompt_profile_for(case)
+    parts = [profile.specialist_prompts[role], SPECIALIST_JSON_SCHEMA_INSTRUCTIONS, NO_RAG_INSTRUCTIONS]
+    parts.extend(_contract_parts(case))
     parts.extend(active_refinements(role, refinement_ids))
     return "\n\n".join(parts)
 
 
 def build_user_prompt(case: CaseDossier, role: SpecialistRoleName) -> str:
-    return (
+    profile = prompt_profile_for(case)
+    contract_text = output_contract_instructions(case)
+    prompt = (
         f"Role: {role}\n"
-        "Work only from this structured oncology case dossier.\n\n"
+        f"Work only from this {profile.dossier_label}.\n\n"
         f"{case.model_dump_json(indent=2)}"
     )
+    if not contract_text:
+        return prompt
+    return f"{prompt}\n\nTask output contract:\n{contract_text}"
 
 
-def build_coordinator_system_prompt() -> str:
-    return "\n\n".join([COORDINATOR_PROMPT, COORDINATOR_JSON_SCHEMA_INSTRUCTIONS, NO_RAG_INSTRUCTIONS])
+def build_coordinator_system_prompt(case: CaseDossier, refinement_ids: list[str]) -> str:
+    profile = prompt_profile_for(case)
+    parts = [profile.coordinator_prompt, COORDINATOR_JSON_SCHEMA_INSTRUCTIONS, NO_RAG_INSTRUCTIONS]
+    parts.extend(_contract_parts(case))
+    parts.extend(active_refinements("coordinator", refinement_ids))
+    return "\n\n".join(parts)
 
 
 def build_coordinator_user_prompt(case: CaseDossier, specialist_outputs: list[AgentOutput]) -> str:
@@ -117,9 +194,13 @@ def build_coordinator_user_prompt(case: CaseDossier, specialist_outputs: list[Ag
         "case": case.model_dump(mode="json"),
         "specialist_outputs": [output.model_dump(mode="json") for output in specialist_outputs],
     }
-    return (
+    contract_text = output_contract_instructions(case)
+    body = (
         "Role: coordinator\n"
-        "Synthesize the specialist outputs into a final MDT-style plan.\n"
+        "Synthesize the specialist outputs into a final answer and supporting plan.\n"
         "Use only this payload.\n\n"
         f"{json.dumps(payload, indent=2, ensure_ascii=False)}"
     )
+    if not contract_text:
+        return body
+    return f"{body}\n\nTask output contract:\n{contract_text}"

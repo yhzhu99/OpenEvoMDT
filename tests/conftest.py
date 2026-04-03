@@ -13,10 +13,12 @@ from evomdt.llm import LLMTrace
 class FakeProvider:
     async def generate_structured(self, messages, parser):
         system_prompt = messages[0].content.lower()
+        user_prompt = messages[1].content
         if "coordinator agent" in system_prompt:
             payload = {
                 "role": "coordinator",
                 "summary": "Recommend limited curative-intent resection, antiviral therapy, and structured surveillance.",
+                "final_answer": "Recommend limited curative-intent resection, antiviral therapy, and structured surveillance.",
                 "final_plan": [
                     {
                         "action": "Laparoscopic liver resection",
@@ -188,6 +190,150 @@ class FakeProvider:
         raw_content = json.dumps(payload)
         parsed = parser(raw_content)
         return LLMTrace(raw_content=raw_content, parsed=parsed, model_name="fake-model", usage={"total_tokens": 1})
+
+
+class BiomedicalFakeProvider:
+    async def generate_structured(self, messages, parser):
+        system_prompt = messages[0].content.lower()
+        user_prompt = messages[1].content
+
+        if '"case_id": "bio-hot-fever-001"' in user_prompt:
+            case_name = "hot"
+        elif '"case_id": "bio-low-fever-002"' in user_prompt:
+            case_name = "low"
+        else:
+            raise AssertionError(f"Unexpected biomedical case in prompt: {user_prompt}")
+
+        if "coordinator agent" in system_prompt:
+            payload = {
+                "role": "coordinator",
+                "summary": "Synthetic benchmark answer based on the dossier and specialist debate.",
+                "final_answer": "A" if case_name == "hot" else "Maybe B",
+                "final_plan": [
+                    {
+                        "action": "Escalate to urgent clinical assessment",
+                        "owner_role": "monitoring",
+                        "rationale": "High-risk physiology requires immediate evaluation rather than reassurance.",
+                        "priority": 1,
+                        "score": 0.9,
+                        "citations": [],
+                    }
+                ],
+                "accepted_actions": ["Escalate to urgent clinical assessment"],
+                "rejected_actions": ["Provide reassurance only"] if case_name == "hot" else [],
+                "conflicts": [],
+                "decision_rationale": "Coordinator integrated fact extraction, answer selection, and safety objections.",
+                "audit_trace": ["Integrated specialist outputs.", "Applied the explicit A/B output contract."],
+                "final_confidence": 0.74,
+                "supporting_facts": [],
+            }
+        elif "diagnostic agent" in system_prompt:
+            payload = {
+                "role": "diagnostic",
+                "summary": "Extracted the key vital-sign facts relevant to the binary task.",
+                "structured_findings": ["Temperature is the primary abnormal datum in the dossier."],
+                "candidate_actions": [
+                    {
+                        "action": "Support answer A" if case_name == "hot" else "Support answer B",
+                        "stance": "recommend",
+                        "rationale": "The observed temperature trend is the main signal available.",
+                        "priority": 1,
+                        "citations": [],
+                    }
+                ],
+                "risks_or_alerts": [],
+                "confidence": 0.8,
+                "supporting_facts": (
+                    [
+                        {
+                            "field_path": "patient_context.summary",
+                            "value": "Synthetic emergency-fever benchmark case.",
+                            "note": "The task is constrained to the provided facts.",
+                            "citations": [],
+                        }
+                    ]
+                    if case_name == "hot"
+                    else []
+                ),
+            }
+        elif "treatment agent" in system_prompt:
+            payload = {
+                "role": "treatment",
+                "summary": "Produced the main answer candidate for the synthetic task.",
+                "structured_findings": ["The answer must follow the A/B output contract."],
+                "candidate_actions": [
+                    {
+                        "action": "Choose A" if case_name == "hot" else "Choose B",
+                        "stance": "recommend",
+                        "rationale": "This answer candidate best matches the simplified benchmark framing.",
+                        "priority": 1,
+                        "citations": [],
+                    }
+                ],
+                "risks_or_alerts": [],
+                "confidence": 0.76,
+                "supporting_facts": [],
+            }
+        elif "safety agent" in system_prompt:
+            payload = {
+                "role": "safety",
+                "summary": "Flagged overconfidence risk in a minimal synthetic dossier.",
+                "structured_findings": ["Avoid presenting the answer as real-world medical certainty."],
+                "candidate_actions": [
+                    {
+                        "action": "Provide reassurance only",
+                        "stance": "avoid" if case_name == "hot" else "consider",
+                        "rationale": "Minimal data should not be used to downplay risk in a severe-fever scenario.",
+                        "priority": 1,
+                        "citations": [],
+                    }
+                ],
+                "risks_or_alerts": (
+                    [
+                        {
+                            "severity": "major",
+                            "concern": "Severe hyperpyrexia can deteriorate rapidly without immediate evaluation.",
+                            "mitigation": "Escalate urgently and avoid false reassurance.",
+                            "related_actions": ["Provide reassurance only"],
+                        }
+                    ]
+                    if case_name == "hot"
+                    else []
+                ),
+                "confidence": 0.88,
+                "supporting_facts": [
+                    {
+                        "field_path": "question",
+                        "value": "Binary prognosis-style benchmark question.",
+                        "note": "The framing itself needs conservative handling.",
+                        "citations": [],
+                    }
+                ],
+            }
+        elif "monitoring agent" in system_prompt:
+            payload = {
+                "role": "monitoring",
+                "summary": "Specified what observation or escalation would make the answer safer.",
+                "structured_findings": ["Observation and urgent reassessment are the key next steps."],
+                "candidate_actions": [
+                    {
+                        "action": "Escalate to urgent clinical assessment",
+                        "stance": "monitor",
+                        "rationale": "This is the safest next step in the synthetic benchmark framing.",
+                        "priority": 1,
+                        "citations": [],
+                    }
+                ],
+                "risks_or_alerts": [],
+                "confidence": 0.72,
+                "supporting_facts": [],
+            }
+        else:
+            raise AssertionError(f"Unexpected system prompt for BiomedicalFakeProvider: {system_prompt}")
+
+        raw_content = json.dumps(payload)
+        parsed = parser(raw_content)
+        return LLMTrace(raw_content=raw_content, parsed=parsed, model_name="biomedical-fake-model", usage={"total_tokens": 1})
 
 
 @pytest.fixture

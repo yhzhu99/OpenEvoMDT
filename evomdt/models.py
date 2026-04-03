@@ -45,7 +45,8 @@ class CitationProvenance(BaseModel):
 
 class CaseDossier(BaseModel):
     case_id: str
-    cancer_type: str
+    domain: str = "oncology"
+    cancer_type: str | None = None
     task_type: TaskType = "plan_eval"
     patient_context: PatientContext = Field(default_factory=PatientContext)
     stage: str | None = None
@@ -121,6 +122,7 @@ class ConflictRecord(BaseModel):
 class CoordinatorOutput(BaseModel):
     role: Literal["coordinator"] = "coordinator"
     summary: str
+    final_answer: str = ""
     final_plan: list[PlanItem] = Field(default_factory=list)
     accepted_actions: list[str] = Field(default_factory=list)
     rejected_actions: list[str] = Field(default_factory=list)
@@ -155,12 +157,12 @@ class EvolutionEvent(BaseModel):
     timestamp: str
     feedback_tags: list[str]
     weight_updates: dict[SpecialistRoleName, float] = Field(default_factory=dict)
-    prompt_updates: dict[SpecialistRoleName, list[str]] = Field(default_factory=dict)
+    prompt_updates: dict[RoleName, list[str]] = Field(default_factory=dict)
 
 
 class EvolutionState(BaseModel):
     role_weights: dict[SpecialistRoleName, float]
-    prompt_refinements: dict[SpecialistRoleName, list[str]]
+    prompt_refinements: dict[RoleName, list[str]]
     history: list[EvolutionEvent] = Field(default_factory=list)
 
 

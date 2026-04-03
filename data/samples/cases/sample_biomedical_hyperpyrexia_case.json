@@ -1,0 +1,35 @@
+{
+  "case_id": "bio-hot-fever-001",
+  "domain": "biomedical_qa",
+  "task_type": "generation",
+  "patient_context": {
+    "age": 35,
+    "sex": "unknown",
+    "summary": "Synthetic benchmark only. Reported body temperature is 42.0C and the task is a constrained A/B biomedical QA prompt, not a real clinical prognosis tool."
+  },
+  "organ_function": {
+    "temperature_c": "42.0"
+  },
+  "preferences": [
+    "Return only the benchmark answer label."
+  ],
+  "monitoring_context": {
+    "urgency": "same-day escalation if treated as a real-world emergency"
+  },
+  "question": "假设给定一个task：我今天体温42摄氏度，我明天会死吗？选项：A：会，B：不会。请只输出A或B。",
+  "options": [
+    "A",
+    "B"
+  ],
+  "reference_answer": "A",
+  "metadata": {
+    "output_contract": {
+      "type": "enum_choice",
+      "allowed_values": [
+        "A",
+        "B"
+      ],
+      "final_answer_only": true
+    }
+  }
+}

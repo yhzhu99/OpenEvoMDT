@@ -6,6 +6,7 @@ from typing import Any
 
 from .config import AppConfig
 from .consensus import normalize_action
+from .contracts import is_allowed_answer, normalize_answer, resolve_output_contract
 from .models import AgentOutput, CaseDossier, CitationProvenance, CoordinatorDecision, EvaluationResult
 
 PRIORITY_WEIGHTS: dict[int, float] = {
@@ -139,6 +140,51 @@ def evidence_traceability_coverage(decision: CoordinatorDecision) -> float:
     return round(covered_items / len(decision.final_plan), 4)
 
 
+def format_compliance(case: CaseDossier, decision: CoordinatorDecision) -> float | None:
+    contract = resolve_output_contract(case)
+    if contract is None:
+        return None
+    return float(is_allowed_answer(case, decision.final_answer))
+
+
+def supporting_fact_coverage(outputs: list[AgentOutput]) -> float:
+    if not outputs:
+        return 0.0
+    covered_roles = sum(1 for output in outputs if output.supporting_facts)
+    return round(covered_roles / len(outputs), 4)
+
+
+def audit_trace_coverage(decision: CoordinatorDecision) -> float:
+    return 1.0 if decision.audit_trace else 0.0
+
+
+def safety_escalation_coverage(outputs: list[AgentOutput], decision: CoordinatorDecision) -> float | None:
+    outputs_by_role = {output.role: output for output in outputs}
+    safety_output = outputs_by_role.get("safety")
+    if safety_output is None:
+        return None
+
+    major_alerts = [alert for alert in safety_output.risks_or_alerts if alert.severity in {"absolute", "major"}]
+    if not major_alerts:
+        return None
+
+    decision_text = normalize_action(
+        " ".join(
+            [decision.final_answer, decision.decision_rationale, decision.response_text, *decision.audit_trace]
+        )
+    )
+    hits = 0
+    for alert in major_alerts:
+        related_actions = [normalize_action(action) for action in alert.related_actions if action]
+        concern = normalize_action(alert.concern)
+        if concern and concern in decision_text:
+            hits += 1
+            continue
+        if any(action and action in decision_text for action in related_actions):
+            hits += 1
+    return round(hits / len(major_alerts), 4)
+
+
 def _maybe_bertscore(reference: str, prediction: str, config: AppConfig) -> float | None:
     if not config.evaluation.enable_bertscore:
         return None
@@ -155,7 +201,14 @@ def _maybe_bertscore(reference: str, prediction: str, config: AppConfig) -> floa
     return round(float(f1.mean().item()), 4)
 
 
-def evaluate_case(
+def _render_summary(metrics: dict[str, float | None], feedback_tags: list[str]) -> str:
+    rendered_metrics = ", ".join(
+        f"{key}={value:.4f}" for key, value in metrics.items() if isinstance(value, float) and not math.isnan(value)
+    )
+    return f"Metrics: {rendered_metrics or 'none'}. Feedback tags: {', '.join(feedback_tags) if feedback_tags else 'none'}."
+
+
+def _legacy_evaluate_case(
     case: CaseDossier,
     outputs: list[AgentOutput],
     decision: CoordinatorDecision,
@@ -164,7 +217,7 @@ def evaluate_case(
     metrics: dict[str, float | None] = {}
 
     if case.task_type == "mcq" and case.reference_answer:
-        metrics["accuracy"] = float(decision.final_answer.strip().lower() == case.reference_answer.strip().lower())
+        metrics["accuracy"] = float(normalize_answer(decision.final_answer) == normalize_answer(case.reference_answer))
 
     if case.task_type == "generation" and case.reference_answer:
         metrics["bertscore_f1"] = _maybe_bertscore(case.reference_answer, decision.response_text, config)
@@ -204,17 +257,74 @@ def evaluate_case(
         feedback_tags.append("treatment_gap")
 
     feedback_tags = list(dict.fromkeys(feedback_tags))
-    rendered_metrics = ", ".join(
-        f"{key}={value:.4f}" for key, value in metrics.items() if isinstance(value, float) and not math.isnan(value)
-    )
-    summary = f"Metrics: {rendered_metrics or 'none'}. Feedback tags: {', '.join(feedback_tags) if feedback_tags else 'none'}."
-
     return EvaluationResult(
         metrics=metrics,
         dimension_scores={},
         feedback_tags=feedback_tags,
-        summary=summary,
+        summary=_render_summary(metrics, feedback_tags),
     )
+
+
+def _biomedical_generation_evaluate_case(
+    case: CaseDossier,
+    outputs: list[AgentOutput],
+    decision: CoordinatorDecision,
+    config: AppConfig,
+) -> EvaluationResult:
+    del config
+
+    metrics: dict[str, float | None] = {
+        "format_compliance": format_compliance(case, decision),
+        "supporting_fact_coverage": supporting_fact_coverage(outputs),
+        "audit_trace_coverage": audit_trace_coverage(decision),
+        "safety_escalation_coverage": safety_escalation_coverage(outputs, decision),
+    }
+    if case.reference_answer:
+        metrics["accuracy"] = float(normalize_answer(decision.final_answer) == normalize_answer(case.reference_answer))
+
+    traceability_components = [
+        value
+        for value in [metrics["supporting_fact_coverage"], metrics["audit_trace_coverage"]]
+        if isinstance(value, float)
+    ]
+    if traceability_components:
+        metrics["traceability_score"] = round(sum(traceability_components) / len(traceability_components), 4)
+
+    feedback_tags: list[str] = []
+    format_value = metrics.get("format_compliance")
+    if format_value == 0.0:
+        feedback_tags.append("format_gap")
+
+    accuracy = metrics.get("accuracy")
+    if accuracy == 0.0:
+        feedback_tags.append("accuracy_gap")
+
+    traceability = metrics.get("traceability_score")
+    if isinstance(traceability, float) and traceability < 0.75:
+        feedback_tags.append("traceability_gap")
+
+    safety_coverage = metrics.get("safety_escalation_coverage")
+    if isinstance(safety_coverage, float) and safety_coverage < 1.0:
+        feedback_tags.append("safety_gap")
+
+    feedback_tags = list(dict.fromkeys(feedback_tags))
+    return EvaluationResult(
+        metrics=metrics,
+        dimension_scores={},
+        feedback_tags=feedback_tags,
+        summary=_render_summary(metrics, feedback_tags),
+    )
+
+
+def evaluate_case(
+    case: CaseDossier,
+    outputs: list[AgentOutput],
+    decision: CoordinatorDecision,
+    config: AppConfig,
+) -> EvaluationResult:
+    if case.task_type == "generation" and (case.domain == "biomedical_qa" or resolve_output_contract(case) is not None):
+        return _biomedical_generation_evaluate_case(case, outputs, decision, config)
+    return _legacy_evaluate_case(case, outputs, decision, config)
 
 
 def aggregate_benchmark_results(results: list[EvaluationResult]) -> dict[str, Any]:

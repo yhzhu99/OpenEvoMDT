@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from .contracts import normalize_answer
 from .models import (
     AgentOutput,
     CaseDossier,
@@ -71,6 +72,28 @@ def _role_weights_with_modifiers(
     return {role: round(role_weights[role] * modifiers[role], 4) for role in role_weights}
 
 
+def _case_label(case: CaseDossier) -> str:
+    return case.cancer_type or case.domain
+
+
+def _normalize_if_short(answer: str) -> str:
+    stripped = answer.strip()
+    if len(stripped) <= 8 and re.fullmatch(r"[A-Za-z0-9]+", stripped):
+        return normalize_answer(stripped)
+    return stripped
+
+
+def _resolved_final_answer(case: CaseDossier, coordinator_output: CoordinatorOutput, top_action: str) -> str:
+    explicit_answer = coordinator_output.final_answer.strip()
+    if explicit_answer:
+        return _normalize_if_short(explicit_answer) if case.task_type in {"generation", "mcq"} else explicit_answer
+    if case.task_type in {"generation", "mcq"}:
+        if coordinator_output.summary.strip():
+            return _normalize_if_short(coordinator_output.summary)
+        return _normalize_if_short(top_action)
+    return coordinator_output.summary if coordinator_output.final_plan else top_action
+
+
 def apply_safety_guardrail(
     case: CaseDossier,
     specialist_outputs: list[AgentOutput],
@@ -123,21 +146,35 @@ def apply_safety_guardrail(
     effective_weights = _role_weights_with_modifiers(case, role_weights)
 
     top_action = accepted_actions[0] if accepted_actions else safety_output.summary
-    final_answer = coordinator_output.summary if final_plan else top_action
+    final_answer = _resolved_final_answer(case, coordinator_output, top_action)
 
     response_lines = [
-        f"Case: {case.case_id} ({case.cancer_type})",
+        f"Case: {case.case_id} ({_case_label(case)})",
         f"Question: {case.question}",
-        "",
-        f"Coordinator Summary: {coordinator_output.summary}",
-        "",
-        "Final MDT Recommendation:",
     ]
-    if final_plan:
-        for item in final_plan:
-            response_lines.append(f"- {item.action} [{item.owner_role}, score={item.score:.2f}]")
+    if case.task_type == "plan_eval":
+        response_lines.extend(
+            [
+                "",
+                f"Coordinator Summary: {coordinator_output.summary}",
+                "",
+                "Final MDT Recommendation:",
+            ]
+        )
+        if final_plan:
+            for item in final_plan:
+                response_lines.append(f"- {item.action} [{item.owner_role}, score={item.score:.2f}]")
+        else:
+            response_lines.append("- No safe consensus action was accepted.")
     else:
-        response_lines.append("- No safe consensus action was accepted.")
+        response_lines.extend(
+            [
+                "",
+                f"Final Answer: {final_answer}",
+            ]
+        )
+        if coordinator_output.summary:
+            response_lines.extend(["", f"Coordinator Summary: {coordinator_output.summary}"])
     if safety_output.risks_or_alerts:
         response_lines.append("")
         response_lines.append("Safety Signals:")
@@ -206,6 +243,7 @@ def deterministic_coordinator(
 
     fallback = CoordinatorOutput(
         summary="Fallback coordinator summary generated from specialist actions.",
+        final_answer="",
         final_plan=plan_items,
         accepted_actions=[item.action for item in plan_items],
         rejected_actions=[],

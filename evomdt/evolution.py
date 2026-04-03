@@ -4,7 +4,15 @@ from pathlib import Path
 
 from .config import AppConfig
 from .io import read_json, write_json
-from .models import EvaluationResult, EvolutionEvent, EvolutionState, SPECIALIST_ROLES, SpecialistRoleName, utc_timestamp
+from .models import (
+    EvaluationResult,
+    EvolutionEvent,
+    EvolutionState,
+    RoleName,
+    SPECIALIST_ROLES,
+    SpecialistRoleName,
+    utc_timestamp,
+)
 from .prompts import REFINEMENT_SNIPPETS
 
 WEIGHT_UPDATE_RULES: dict[str, dict[SpecialistRoleName, float]] = {
@@ -13,7 +21,10 @@ WEIGHT_UPDATE_RULES: dict[str, dict[SpecialistRoleName, float]] = {
     "monitoring_gap": {"monitoring": 1.0},
     "evidence_gap": {"diagnostic": 0.5, "treatment": 0.5},
     "treatment_gap": {"treatment": 1.0},
+    "accuracy_gap": {"diagnostic": 1.0, "treatment": 1.0},
+    "traceability_gap": {"diagnostic": 0.5, "treatment": 0.5},
 }
+PROMPT_REFINEMENT_ROLES: tuple[RoleName, ...] = (*SPECIALIST_ROLES, "coordinator")
 
 
 def initial_state(config: AppConfig) -> EvolutionState:
@@ -23,7 +34,7 @@ def initial_state(config: AppConfig) -> EvolutionState:
             for role in SPECIALIST_ROLES
             if config.agents.roles[role].weight is not None
         },
-        prompt_refinements={role: [] for role in SPECIALIST_ROLES},
+        prompt_refinements={role: [] for role in PROMPT_REFINEMENT_ROLES},
         history=[],
     )
 
@@ -41,7 +52,7 @@ def load_state(config: AppConfig) -> EvolutionState:
     raw_state["prompt_refinements"] = {
         role: value
         for role, value in raw_state.get("prompt_refinements", {}).items()
-        if role in SPECIALIST_ROLES
+        if role in PROMPT_REFINEMENT_ROLES
     }
     for event in raw_state.get("history", []):
         event["weight_updates"] = {
@@ -52,12 +63,13 @@ def load_state(config: AppConfig) -> EvolutionState:
         event["prompt_updates"] = {
             role: value
             for role, value in event.get("prompt_updates", {}).items()
-            if role in SPECIALIST_ROLES
+            if role in PROMPT_REFINEMENT_ROLES
         }
     state = EvolutionState.model_validate(raw_state)
     baseline = initial_state(config)
     for role in SPECIALIST_ROLES:
         state.role_weights.setdefault(role, baseline.role_weights[role])
+    for role in PROMPT_REFINEMENT_ROLES:
         state.prompt_refinements.setdefault(role, [])
     return state
 
@@ -72,7 +84,7 @@ def apply_feedback(config: AppConfig, state: EvolutionState, evaluation: Evaluat
 
     updated = state.model_copy(deep=True)
     weight_updates: dict[SpecialistRoleName, float] = {}
-    prompt_updates: dict[SpecialistRoleName, list[str]] = {}
+    prompt_updates: dict[RoleName, list[str]] = {}
 
     for tag in evaluation.feedback_tags:
         for role, factor in WEIGHT_UPDATE_RULES.get(tag, {}).items():
@@ -85,7 +97,7 @@ def apply_feedback(config: AppConfig, state: EvolutionState, evaluation: Evaluat
 
         role_snippets = REFINEMENT_SNIPPETS.get(tag, {})
         for role in role_snippets:
-            if role not in SPECIALIST_ROLES:
+            if role not in PROMPT_REFINEMENT_ROLES:
                 continue
             prompts = updated.prompt_refinements.setdefault(role, [])
             if tag not in prompts:

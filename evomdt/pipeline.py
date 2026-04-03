@@ -51,7 +51,7 @@ class EvoMDTSystem:
         role_config = self.config.agents.roles[role]
         provider = self.provider_factory(role_config.llm)
         messages = [
-            ChatMessage(role="system", content=build_system_prompt(role, refinement_ids)),
+            ChatMessage(role="system", content=build_system_prompt(case, role, refinement_ids)),
             ChatMessage(role="user", content=build_user_prompt(case, role)),
         ]
         trace = await provider.generate_structured(
@@ -69,11 +69,16 @@ class EvoMDTSystem:
             parsed_output=parsed_output,
         )
 
-    async def _run_coordinator(self, case: CaseDossier, outputs: list[AgentOutput]) -> AgentExecutionTrace:
+    async def _run_coordinator(
+        self,
+        case: CaseDossier,
+        outputs: list[AgentOutput],
+        refinement_ids: list[str],
+    ) -> AgentExecutionTrace:
         role_config = self.config.agents.roles["coordinator"]
         provider = self.provider_factory(role_config.llm)
         messages = [
-            ChatMessage(role="system", content=build_coordinator_system_prompt()),
+            ChatMessage(role="system", content=build_coordinator_system_prompt(case, refinement_ids)),
             ChatMessage(role="user", content=build_coordinator_user_prompt(case, outputs)),
         ]
         trace = await provider.generate_structured(
@@ -115,7 +120,11 @@ class EvoMDTSystem:
         outputs = [trace.parsed_output for trace in traces]
         coordinator_trace: AgentExecutionTrace | None = None
         try:
-            coordinator_trace = await self._run_coordinator(case, outputs)
+            coordinator_trace = await self._run_coordinator(
+                case,
+                outputs,
+                refinement_ids_by_role.get("coordinator", []),
+            )
             traces.append(coordinator_trace)
             coordinator_decision = apply_safety_guardrail(
                 case,

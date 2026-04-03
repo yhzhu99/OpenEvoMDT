@@ -54,5 +54,6 @@ def test_load_state_drops_legacy_coordinator_weight(test_config):
     state = load_state(test_config)
 
     assert "coordinator" not in state.role_weights
-    assert "coordinator" not in state.prompt_refinements
+    assert state.prompt_refinements["coordinator"] == ["efficiency_gap"]
     assert state.history[0].weight_updates == {"safety": 1.05}
+    assert state.history[0].prompt_updates == {"coordinator": ["efficiency_gap"], "safety": ["safety_gap"]}
