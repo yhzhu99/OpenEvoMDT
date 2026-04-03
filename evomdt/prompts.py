@@ -116,6 +116,17 @@ NO_RAG_INSTRUCTIONS = (
     "You may reason from the structured dossier and prior agent outputs only."
 )
 
+PROMPT_METADATA_ALLOWLIST: tuple[str, ...] = ("task_context", "prompt_context", "dataset", "source", "tags")
+PROMPT_METADATA_BLOCKLIST: set[str] = {
+    "reference_plan",
+    "guideline_tags",
+    "required_constraints",
+    "forbidden_actions",
+    "output_contract",
+    "require_provenance",
+    "source_record",
+}
+
 REFINEMENT_SNIPPETS: dict[str, dict[RoleName, str]] = {
     "completeness_gap": {
         "diagnostic": "Be explicit about unresolved investigations, stage-driving findings, and missing data that block certainty.",
@@ -168,6 +179,86 @@ def _contract_parts(case: CaseDossier) -> list[str]:
     return [contract_text] if contract_text else []
 
 
+def _is_present(value: object) -> bool:
+    if value is None:
+        return False
+    if value == "":
+        return False
+    if isinstance(value, (list, dict, tuple, set)):
+        return len(value) > 0
+    return True
+
+
+def _compact_dict(payload: dict[str, object]) -> dict[str, object]:
+    compact: dict[str, object] = {}
+    for key, value in payload.items():
+        if isinstance(value, dict):
+            nested = _compact_dict(value)
+            if nested:
+                compact[key] = nested
+            continue
+        if isinstance(value, list):
+            nested_list = []
+            for item in value:
+                if isinstance(item, dict):
+                    nested = _compact_dict(item)
+                    if nested:
+                        nested_list.append(nested)
+                    continue
+                if _is_present(item):
+                    nested_list.append(item)
+            if nested_list:
+                compact[key] = nested_list
+            continue
+        if _is_present(value):
+            compact[key] = value
+    return compact
+
+
+def _prompt_metadata(case: CaseDossier) -> dict[str, object]:
+    metadata: dict[str, object] = {}
+    for key in PROMPT_METADATA_ALLOWLIST:
+        value = case.metadata.get(key)
+        if _is_present(value):
+            metadata[key] = value
+    for key, value in case.metadata.items():
+        if key in PROMPT_METADATA_BLOCKLIST or key in metadata:
+            continue
+        if key.startswith("eval_") or key.startswith("benchmark_"):
+            continue
+        if isinstance(value, (str, int, float, bool, list, dict)) and _is_present(value):
+            metadata[key] = value
+    return metadata
+
+
+def case_prompt_payload(case: CaseDossier) -> dict[str, object]:
+    payload = {
+        "case_id": case.case_id,
+        "domain": case.domain,
+        "task_type": case.task_type,
+        "question": case.question,
+        "options": case.options,
+        "patient_context": case.patient_context.model_dump(mode="json"),
+        "stage": case.stage,
+        "stage_system": case.stage_system,
+        "pathology_summary": case.pathology_summary,
+        "lesions": [lesion.model_dump(mode="json") for lesion in case.lesions],
+        "biomarkers": [biomarker.model_dump(mode="json") for biomarker in case.biomarkers],
+        "organ_function": case.organ_function,
+        "comorbidities": case.comorbidities,
+        "prior_treatments": case.prior_treatments,
+        "line_of_therapy": case.line_of_therapy,
+        "treatment_intent": case.treatment_intent,
+        "preferences": case.preferences,
+        "missing_data": case.missing_data,
+        "monitoring_context": case.monitoring_context,
+        "metadata": _prompt_metadata(case),
+    }
+    if case.cancer_type:
+        payload["cancer_type"] = case.cancer_type
+    return _compact_dict(payload)
+
+
 def build_system_prompt(case: CaseDossier, role: SpecialistRoleName, refinement_ids: list[str]) -> str:
     profile = prompt_profile_for(case)
     parts = [profile.specialist_prompts[role], SPECIALIST_JSON_SCHEMA_INSTRUCTIONS, NO_RAG_INSTRUCTIONS]
@@ -179,10 +270,11 @@ def build_system_prompt(case: CaseDossier, role: SpecialistRoleName, refinement_
 def build_user_prompt(case: CaseDossier, role: SpecialistRoleName) -> str:
     profile = prompt_profile_for(case)
     contract_text = output_contract_instructions(case)
+    prompt_payload = case_prompt_payload(case)
     prompt = (
         f"Role: {role}\n"
         f"Work only from this {profile.dossier_label}.\n\n"
-        f"{case.model_dump_json(indent=2)}"
+        f"{json.dumps(prompt_payload, indent=2, ensure_ascii=False)}"
     )
     if not contract_text:
         return prompt
@@ -199,7 +291,7 @@ def build_coordinator_system_prompt(case: CaseDossier, refinement_ids: list[str]
 
 def build_coordinator_user_prompt(case: CaseDossier, specialist_outputs: list[AgentOutput]) -> str:
     payload = {
-        "case": case.model_dump(mode="json"),
+        "case": case_prompt_payload(case),
         "specialist_outputs": [output.model_dump(mode="json") for output in specialist_outputs],
     }
     contract_text = output_contract_instructions(case)

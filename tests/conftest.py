@@ -336,6 +336,78 @@ class BiomedicalFakeProvider:
         return LLMTrace(raw_content=raw_content, parsed=parsed, model_name="biomedical-fake-model", usage={"total_tokens": 1})
 
 
+class MinimalTaskFakeProvider:
+    async def generate_structured(self, messages, parser):
+        system_prompt = messages[0].content.lower()
+        user_prompt = messages[1].content
+
+        if '"case_id": "1"' in user_prompt:
+            final_answer = "C"
+        elif '"case_id": "2"' in user_prompt:
+            final_answer = "B"
+        else:
+            raise AssertionError(f"Unexpected minimal task prompt: {user_prompt}")
+
+        if "coordinator agent" in system_prompt:
+            payload = {
+                "role": "coordinator",
+                "summary": "Selected the best benchmark option from the provided task text.",
+                "final_answer": final_answer,
+                "final_plan": [],
+                "accepted_actions": [f"Return {final_answer}"],
+                "rejected_actions": [],
+                "conflicts": [],
+                "decision_rationale": "Coordinator used the constrained benchmark task text and specialist recommendations.",
+                "audit_trace": ["Integrated specialist outputs for the minimal benchmark task."],
+                "final_confidence": 0.77,
+                "supporting_facts": [
+                    {
+                        "field_path": "question",
+                        "value": "Minimal benchmark task text",
+                        "note": "The task text contains all required information.",
+                        "citations": [],
+                    }
+                ],
+            }
+        else:
+            payload = {
+                "role": (
+                    "diagnostic"
+                    if "diagnostic agent" in system_prompt
+                    else "treatment"
+                    if "treatment agent" in system_prompt
+                    else "safety"
+                    if "safety agent" in system_prompt
+                    else "monitoring"
+                ),
+                "summary": "Reviewed the minimal benchmark task.",
+                "structured_findings": ["Task text includes the answer options inline."],
+                "candidate_actions": [
+                    {
+                        "action": f"Support answer {final_answer}",
+                        "stance": "recommend" if "safety agent" not in system_prompt else "consider",
+                        "rationale": "Minimal benchmark tasks should still produce a single constrained answer.",
+                        "priority": 1,
+                        "citations": [],
+                    }
+                ],
+                "risks_or_alerts": [],
+                "confidence": 0.7,
+                "supporting_facts": [
+                    {
+                        "field_path": "question",
+                        "value": "Minimal benchmark task text",
+                        "note": "The raw task text is sufficient for answer selection.",
+                        "citations": [],
+                    }
+                ],
+            }
+
+        raw_content = json.dumps(payload)
+        parsed = parser(raw_content)
+        return LLMTrace(raw_content=raw_content, parsed=parsed, model_name="minimal-task-fake-model", usage={"total_tokens": 1})
+
+
 @pytest.fixture
 def sample_case():
     return load_case(Path("data/samples/cases/sample_hcc_case.json"))
