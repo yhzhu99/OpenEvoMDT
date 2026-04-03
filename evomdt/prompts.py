@@ -85,9 +85,14 @@ PROMPT_PROFILES: dict[str, PromptProfile] = {
 SPECIALIST_JSON_SCHEMA_INSTRUCTIONS = (
     "Return valid JSON only with the fields: "
     "role, summary, structured_findings, candidate_actions, risks_or_alerts, confidence, supporting_facts. "
+    "structured_findings must be a JSON array of strings. "
     "candidate_actions must contain action, stance, rationale, priority, citations. "
+    "Use stance exactly as one of recommend, consider, avoid, monitor. "
+    "Use priority as an integer from 1 to 5. "
     "risks_or_alerts must contain severity, concern, mitigation, related_actions. "
+    "Use severity exactly as one of absolute, major, moderate, minor, info. "
     "supporting_facts must contain field_path, value, note, citations. "
+    "Use confidence as a numeric value from 0.0 to 1.0. "
     "Each citation object must contain source_id, anchor, version, evidence_grade, year, source_type. "
     "When you do not have provenance, return citations as an empty list."
 )
@@ -97,8 +102,11 @@ COORDINATOR_JSON_SCHEMA_INSTRUCTIONS = (
     "role, summary, final_answer, final_plan, accepted_actions, rejected_actions, conflicts, decision_rationale, audit_trace, final_confidence, supporting_facts. "
     "final_answer must contain the exact final answer string. "
     "final_plan items must contain action, owner_role, rationale, priority, score, citations. "
+    "Use owner_role exactly as one of diagnostic, treatment, safety, monitoring, coordinator. "
+    "Use priority as an integer from 1 to 5 and score as a numeric value from 0.0 to 1.0. "
     "conflicts must contain action, recommenders, objectors, severity, conflict_type, outcome, rationale. "
     "supporting_facts must contain field_path, value, note, citations. "
+    "Use final_confidence as a numeric value from 0.0 to 1.0. "
     "Each citation object must contain source_id, anchor, version, evidence_grade, year, source_type. "
     "Do not include markdown fences."
 )

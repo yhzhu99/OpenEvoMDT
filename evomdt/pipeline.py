@@ -25,6 +25,7 @@ from .models import (
     SpecialistRoleName,
     utc_timestamp,
 )
+from .normalization import normalize_agent_output_payload, normalize_coordinator_output_payload
 from .prompts import build_coordinator_system_prompt, build_coordinator_user_prompt, build_system_prompt, build_user_prompt
 
 LOGGER = logging.getLogger("evomdt.pipeline")
@@ -56,7 +57,7 @@ class EvoMDTSystem:
         ]
         trace = await provider.generate_structured(
             messages,
-            parser=lambda content: AgentOutput.model_validate(parse_json_content(content)),
+            parser=lambda content: AgentOutput.model_validate(normalize_agent_output_payload(parse_json_content(content), role)),
         )
         parsed_output = AgentOutput.model_validate(trace.parsed)
         if parsed_output.role != role:
@@ -83,7 +84,9 @@ class EvoMDTSystem:
         ]
         trace = await provider.generate_structured(
             messages,
-            parser=lambda content: CoordinatorOutput.model_validate(parse_json_content(content)),
+            parser=lambda content: CoordinatorOutput.model_validate(
+                normalize_coordinator_output_payload(parse_json_content(content), case)
+            ),
         )
         parsed_output = CoordinatorOutput.model_validate(trace.parsed)
         return AgentExecutionTrace(

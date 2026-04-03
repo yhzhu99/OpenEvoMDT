@@ -46,7 +46,8 @@ def test_biomedical_generation_evaluation_detects_contract_failures(test_config)
     assert result.evaluation is not None
     assert result.evaluation.metrics["format_compliance"] == 0.0
     assert result.evaluation.metrics["accuracy"] == 0.0
-    assert result.evaluation.metrics["traceability_score"] == 0.625
+    assert result.evaluation.metrics["evidence_traceability_coverage"] == 0.0
+    assert result.evaluation.metrics["traceability_score"] == 0.4167
     assert result.evaluation.feedback_tags == ["format_gap", "accuracy_gap", "traceability_gap"]
 
 
@@ -56,7 +57,7 @@ def test_biomedical_evolve_records_feedback_and_coordinator_refinement(test_conf
     summary = asyncio.run(system.evolve("data/samples/benchmarks/sample_biomedical_benchmark.jsonl"))
 
     assert summary["updated_cases"] == 2
-    assert summary["role_weights"]["diagnostic"] == 1.075
-    assert summary["role_weights"]["treatment"] == 1.075
+    assert summary["role_weights"]["diagnostic"] == 1.1
+    assert summary["role_weights"]["treatment"] == 1.1
     assert summary["prompt_refinements"]["coordinator"] == ["format_gap"]
-    assert summary["prompt_refinements"]["diagnostic"] == ["accuracy_gap", "traceability_gap"]
+    assert summary["prompt_refinements"]["diagnostic"] == ["traceability_gap", "accuracy_gap"]

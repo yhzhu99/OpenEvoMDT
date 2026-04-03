@@ -279,12 +279,18 @@ def _biomedical_generation_evaluate_case(
         "audit_trace_coverage": audit_trace_coverage(decision),
         "safety_escalation_coverage": safety_escalation_coverage(outputs, decision),
     }
+    if case.metadata.get("require_provenance"):
+        metrics["evidence_traceability_coverage"] = evidence_traceability_coverage(decision)
     if case.reference_answer:
         metrics["accuracy"] = float(normalize_answer(decision.final_answer) == normalize_answer(case.reference_answer))
 
     traceability_components = [
         value
-        for value in [metrics["supporting_fact_coverage"], metrics["audit_trace_coverage"]]
+        for value in [
+            metrics["supporting_fact_coverage"],
+            metrics["audit_trace_coverage"],
+            metrics.get("evidence_traceability_coverage"),
+        ]
         if isinstance(value, float)
     ]
     if traceability_components:
